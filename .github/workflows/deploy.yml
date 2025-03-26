@@ -1,5 +1,5 @@
 ---
-name: "🚀 Deploy to AWS EC2 via Bastion with Dynamic IPs"
+name: "Deploy to AWS EC2 via Bastion with Dynamic IPs"
 
 on:
   push:
@@ -65,6 +65,6 @@ jobs:
                else \
                  git pull origin main; \
                fi && \
-               docker compose -f docker-compose.yml up -d --build'
+               docker-compose -f docker-compose.yml up -d --build'
           done
           
