@@ -23,8 +23,8 @@ jobs:
         run: |
           # Ensure .ssh directory exists and set up deploy key
           mkdir -p ~/.ssh
-          echo "$SSH_STATUSPAGE_NOAKIREL" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          echo "$SSH_STATUSPAGE_NOAKIREL" > ~/.ssh/noakirel-keypair.pem
+          chmod 600 ~/.ssh/noakirel-keypair.pem
         env:
           SSH_STATUSPAGE_NOAKIREL: ${{ secrets.SSH_STATUSPAGE_NOAKIREL }}
 
@@ -54,7 +54,7 @@ jobs:
           for ip in ${{ steps.get_ips.outputs.ips }}; do
             echo "Deploying to $ip"
             ssh -o StrictHostKeyChecking=no \
-              -i ~/.ssh/deploy_key \
+              -i ~/.ssh/noakirel-keypair.pem \
               - name: Echo ProxyJump string
                 run: echo "ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_IP }}"
 
