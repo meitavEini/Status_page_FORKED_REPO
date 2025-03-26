@@ -41,11 +41,13 @@ jobs:
           # Query EC2 instances using tag filters
           IPS=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=statuspage-prod" \
-                     "Name=tag:owner,Values=meitaveini" \
+                    "Name=tag:owner,Values=meitaveini" \
             --query "Reservations[*].Instances[*].PrivateIpAddress" \
-            --output text)
+            --output text | tr '\t' ' ' | xargs)
+
           echo "Fetched IPs: $IPS"
           echo "ips=$IPS" >> $GITHUB_OUTPUT
+
 
       - name: Deploy to all tagged EC2 instances
         run: |
