@@ -177,6 +177,19 @@ resource "aws_instance" "bastion_host" {
   }
 }
 
+resource "aws_eip" "bastion_eip" {
+  vpc = true
+
+  tags = {
+    Name  = "Bastion-EIP"
+    owner = "meitaveini"
+  }
+}
+resource "aws_eip_association" "bastion_eip_assoc" {
+  instance_id   = aws_instance.bastion_host.id
+  allocation_id = aws_eip.bastion_eip.id
+}
+
 # Security Group for private instances
 resource "aws_security_group" "private_sg" {
   vpc_id = aws_vpc.main_vpc.id
