@@ -51,21 +51,17 @@ jobs:
 
       - name: Deploy to all tagged EC2 instances
         run: |
-          for ip in ${{ steps.get_ips.outputs.ips }}; do
+          for ip in $ips; do
             echo "Deploying to $ip"
             ssh -o StrictHostKeyChecking=no \
-              -i ~/.ssh/noakirel-keypair.pem \
-              - name: Echo ProxyJump string
-                run: echo "ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_IP }}"
-
-              ${{ secrets.SERVER_USER }}@$ip \
-              'cd /opt/status-page && \
-               if [ ! -d .git ]; then \
-                 git clone git@github.com: \
-                 meitavEini/Status_page_FORKED_REPO.git .; \
-               else \
-                 git pull origin main; \
-               fi && \
-               docker-compose -f docker-compose.yml up -d --build'
+                -o ProxyJump=${{ secrets.BASTION_USER }}@${{ secrets.BASTION_IP }} \
+                -i ~/.ssh/noakirel-keypair.pem \
+                ${{ secrets.SERVER_USER }}@$ip \
+                'cd /opt/status-page && \
+                 if [ ! -d .git ]; then \
+                   git clone https://github.com/meitavEini/Status_page_FORKED_REPO.git .; \
+                 else \
+                   git pull origin main; \
+                 fi && \
+                 docker-compose -f docker-compose.yml up -d --build'
           done
-          
