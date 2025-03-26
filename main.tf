@@ -178,7 +178,7 @@ resource "aws_instance" "bastion_host" {
 }
 
 resource "aws_eip" "bastion_eip" {
-  vpc = true
+  domain = "vpc"
 
   tags = {
     Name  = "Bastion-EIP"
@@ -342,3 +342,83 @@ resource "aws_autoscaling_group" "statuspage_asg" {
     create_before_destroy = true
   }
 }
+
+resource "aws_security_group" "monitoring_sg" {
+  name        = "monitoring-sg"
+  description = "Allow access to Prometheus (9090) and Grafana (3000)"
+  vpc_id      = aws_vpc.main_vpc.id
+
+  ingress {
+    description = "Grafana"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  ingress {
+    description = "Prometheus"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "monitoring-sg"
+    owner = "meitaveini"
+  }
+}
+
+resource "aws_launch_template" "monitoring_lt" {
+  name_prefix   = "monitoring-lt-"
+  image_id      = "ami-084568db4383264d4" # Ubuntu 24.04
+  instance_type = "t2.medium"
+  key_name      = "noakirel-keypair"
+
+  vpc_security_group_ids = [aws_security_group.monitoring_sg.id]
+
+  user_data = filebase64("${path.module}/docs/monitoring_user_data.sh")
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name  = "monitoring-node"
+      owner = "meitaveini"
+      role  = "monitoring"
+    }
+  }
+}
+
+resource "aws_autoscaling_group" "monitoring_asg" {
+  name                      = "monitoring-asg"
+  desired_capacity          = 1
+  min_size                  = 1
+  max_size                  = 1
+  vpc_zone_identifier       = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+
+  launch_template {
+    id      = aws_launch_template.monitoring_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "monitoring-node"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
