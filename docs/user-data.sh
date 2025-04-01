@@ -1,4 +1,3 @@
-#user-data.sh
 #!/bin/bash
 
 # Update system and install basic packages

@@ -361,6 +361,13 @@ resource "aws_security_group" "monitoring_sg" {
   vpc_id      = aws_vpc.main_vpc.id
 
   ingress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id] # SSH only from-Bastion
+  }
+  
+  ingress {
     description = "Grafana"
     from_port   = 3000
     to_port     = 3000
