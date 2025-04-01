@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> e22084c (:()
 version: "3.8"
 
 services:
@@ -59,4 +62,8 @@ volumes:
   postgres_data:
 
 networks:
+<<<<<<< HEAD
   my_network:
+=======
+  my_network:
+>>>>>>> e22084c (:()
