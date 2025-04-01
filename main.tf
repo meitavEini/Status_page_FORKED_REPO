@@ -178,7 +178,7 @@ resource "aws_instance" "bastion_host" {
 }
 
 resource "aws_eip" "bastion_eip" {
-  vpc = true
+  domain = "vpc"
 
   tags = {
     Name  = "Bastion-EIP"
@@ -208,12 +208,24 @@ resource "aws_security_group" "private_sg" {
     security_groups = [aws_security_group.lb_sg.id] # connect only from-LB
   }
 
+  ingress {
+    from_port       = 9100
+    to_port         = 9100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.monitoring_sg.id] # Prometheus access only
+    description     = "Allow Prometheus to scrape node_exporter"
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  tags = {
+    Name  = "private-sg"
+    owner = "meitaveini"
+  }  
 }
 
 # Security Group for Load Balancer
@@ -335,6 +347,145 @@ resource "aws_autoscaling_group" "statuspage_asg" {
   tag {
     key                 = "role"
     value               = "statuspage"
+    propagate_at_launch = true
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_security_group" "monitoring_sg" {
+  name        = "monitoring-sg"
+  description = "Allow access to Prometheus (9090) and Grafana (3000)"
+  vpc_id      = aws_vpc.main_vpc.id
+
+  ingress {
+    description = "Grafana"
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  ingress {
+    description = "Prometheus"
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "monitoring-sg"
+    owner = "meitaveini"
+  }
+}
+
+# IAM Role for Prometheus EC2 Service Discovery
+resource "aws_iam_role" "prometheus_ec2_discovery" {
+  name = "prometheus-ec2-discovery-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name  = "prometheus-ec2-discovery-role"
+    owner = "meitaveini"
+  }
+}
+
+# IAM Policy for EC2 DescribeInstances
+resource "aws_iam_policy" "prometheus_ec2_discovery_policy" {
+  name        = "prometheus-ec2-describe-policy"
+  description = "Allow Prometheus to describe EC2 instances and tags"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ec2:DescribeInstances",
+          "ec2:DescribeTags",
+          "ec2:DescribeRegions"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "prometheus_ec2_policy_attach" {
+  role       = aws_iam_role.prometheus_ec2_discovery.name
+  policy_arn = aws_iam_policy.prometheus_ec2_discovery_policy.arn
+}
+
+# IAM Instance Profile to assign to EC2
+resource "aws_iam_instance_profile" "prometheus_instance_profile" {
+  name = "prometheus-instance-profile"
+  role = aws_iam_role.prometheus_ec2_discovery.name
+}
+
+resource "aws_launch_template" "monitoring_lt" {
+  name_prefix   = "monitoring-lt-"
+  image_id      = "ami-084568db4383264d4" # Ubuntu 24.04
+  instance_type = "t2.medium"
+  key_name      = "noakirel-keypair"
+
+  vpc_security_group_ids = [aws_security_group.monitoring_sg.id]
+  user_data = filebase64("${path.module}/docs/monitoring_user_data.sh")
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.prometheus_instance_profile.name
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name  = "monitoring-node"
+      owner = "meitaveini"
+      role  = "monitoring"
+    }
+  }
+}
+
+resource "aws_autoscaling_group" "monitoring_asg" {
+  name                      = "monitoring-asg"
+  desired_capacity          = 1
+  min_size                  = 1
+  max_size                  = 1
+  vpc_zone_identifier       = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+
+  launch_template {
+    id      = aws_launch_template.monitoring_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "monitoring-node"
     propagate_at_launch = true
   }
 
