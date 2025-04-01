@@ -1,10 +1,14 @@
 {
   "id": null,
   "title": "Node Monitoring",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
     {
       "title": "CPU Usage",
-      "type": "gauge",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "instance:cpu_usage_percent",
@@ -14,7 +18,7 @@
     },
     {
       "title": "Memory Available (MB)",
-      "type": "gauge",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "instance:memory_available_mb",
@@ -24,7 +28,7 @@
     },
     {
       "title": "Disk Usage (%)",
-      "type": "gauge",
+      "type": "timeseries",
       "targets": [
         {
           "expr": "instance:disk_usage_percent",
