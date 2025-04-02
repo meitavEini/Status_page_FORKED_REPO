@@ -6,7 +6,7 @@ services:
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./recording-rules.yml:/etc/prometheus/recording-rules.yml  # הוספת הקובץ
+      - ./recording-rules.yml:/etc/prometheus/recording-rules.yml
     ports:
       - "9090:9090"
     networks:
@@ -32,6 +32,28 @@ services:
       - ./datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
       - ./dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
       - ./dashboards:/var/lib/grafana/dashboards
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log
+      - ./promtail/promtail-config.yaml:/etc/promtail/config.yaml
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - monitoring
+
 networks:
   monitoring:
     driver: bridge

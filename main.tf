@@ -231,6 +231,13 @@ resource "aws_security_group" "private_sg" {
 # Security Group for Load Balancer
 resource "aws_security_group" "lb_sg" {
   vpc_id = aws_vpc.main_vpc.id
+  
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
   ingress {
     from_port   = 80
@@ -258,6 +265,11 @@ resource "aws_lb" "web_lb" {
     aws_subnet.public_subnet_1.id,
     aws_subnet.public_subnet_2.id
   ]
+  
+  tags = {
+    Name  = "WebLoadBalancer"
+    owner = "meitaveini"
+  }
 }
 
 # create Target Group
@@ -280,18 +292,18 @@ resource "aws_lb_listener" "web_listener" {
   }
 }
 
-#resource "aws_lb_listener" "web_listener_https" {
-#  load_balancer_arn = aws_lb.web_lb.arn
-#  port              = 443
-#  protocol          = "HTTPS"
-#  ssl_policy        = "ELBSecurityPolicy-2016-08" # במידה ויש תעודת SSL
-#  certificate_arn   = "arn:aws:acm:...."           # במידה ויש תעודת SSL
-
-#  default_action {
-#    type             = "forward"
-#    target_group_arn = aws_lb_target_group.web_tg.arn
-#  }
-#}
+resource "aws_lb_listener" "web_listener_https" {
+  load_balancer_arn = aws_lb.web_lb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = aws_acm_certificate.web_cert.arn
+  
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
+  }
+}
 
 # AWS Auto Scaling Group with User Data and Tag Filtering
 
@@ -355,31 +367,42 @@ resource "aws_autoscaling_group" "statuspage_asg" {
   }
 }
 
-resource "aws_security_group" "monitoring_sg" {
-  name        = "monitoring-sg"
+# Replace your existing monitoring security group with this
+resource "aws_security_group" "monitoring_sg_new" {
+  name        = "monitoring-sg-new"
   description = "Allow access to Prometheus (9090) and Grafana (3000)"
   vpc_id      = aws_vpc.main_vpc.id
 
   ingress {
+    description     = "SSH"
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
     security_groups = [aws_security_group.bastion_sg.id] # SSH only from-Bastion
+    description     = "SSH access from bastion"
   }
   
   ingress {
-    description = "Grafana"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
+    description     = "Grafana Loki-new"
+    from_port       = 3100
+    to_port         = 3100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+  
+  ingress {
+    description     = "Grafana"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
     security_groups = [aws_security_group.bastion_sg.id]
   }
 
   ingress {
-    description = "Prometheus"
-    from_port   = 9090
-    to_port     = 9090
-    protocol    = "tcp"
+    description     = "Prometheus"
+    from_port       = 9090
+    to_port         = 9090
+    protocol        = "tcp"
     security_groups = [aws_security_group.bastion_sg.id]
   }
 
@@ -391,9 +414,33 @@ resource "aws_security_group" "monitoring_sg" {
   }
 
   tags = {
-    Name = "monitoring-sg"
+    Name  = "monitoring-sg-new"
     owner = "meitaveini"
   }
+}
+
+# Update all references to the security group in your private_sg
+resource "aws_security_group" "private_sg" {
+  # Keep your existing settings
+  
+  ingress {
+    from_port       = 9100
+    to_port         = 9100
+    protocol        = "tcp"
+    security_groups = [aws_security_group.monitoring_sg_new.id] # Updated reference
+    description     = "Allow Prometheus to scrape node_exporter"
+  }
+  
+  # Keep other ingress and egress rules
+}
+
+# Update your monitoring launch template
+resource "aws_launch_template" "monitoring_lt" {
+  # Keep your existing settings
+  
+  vpc_security_group_ids = [aws_security_group.monitoring_sg_new.id]  # Updated reference
+  
+  # Keep other settings
 }
 
 # IAM Role for Prometheus EC2 Service Discovery
@@ -460,7 +507,7 @@ resource "aws_launch_template" "monitoring_lt" {
   key_name      = "noakirel-keypair"
 
   vpc_security_group_ids = [aws_security_group.monitoring_sg.id]
-  user_data = filebase64("${path.module}/docs/monitoring_user_data.sh")
+  user_data = filebase64("${path.module}/monitoring/monitoring_user_data.sh")
 
   iam_instance_profile {
     name = aws_iam_instance_profile.prometheus_instance_profile.name
@@ -498,5 +545,103 @@ resource "aws_autoscaling_group" "monitoring_asg" {
 
   lifecycle {
     create_before_destroy = true
+  }
+}
+
+# Route 53 Domain Configuration
+resource "aws_route53_zone" "primary" {
+  name = "noakirelapp.com"
+  
+  tags = {
+    Name  = "Primary-DNS-Zone"
+    owner = "meitaveini"
+  }
+}
+
+# Then add your certificate resources
+resource "aws_acm_certificate" "web_cert" {
+  domain_name       = "noakirelapp.com"
+  validation_method = "DNS"
+  subject_alternative_names = ["*.noakirelapp.com"]
+  
+  tags = {
+    Name  = "noakirelapp-cert"
+    owner = "meitaveini"
+  }
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Certificate validation via DNS
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.web_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+  
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  records = [each.value.record]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "cert" {
+  certificate_arn         = aws_acm_certificate.web_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# Update your load balancer security group to allow HTTPS
+resource "aws_security_group_rule" "lb_https_inbound" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.lb_sg.id
+}
+
+# Then uncomment and update your HTTPS listener
+resource "aws_lb_listener" "web_listener_https" {
+  load_balancer_arn = aws_lb.web_lb.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = aws_acm_certificate.web_cert.arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
+  }
+}
+
+# Add Route 53 records pointing to your load balancer
+resource "aws_route53_record" "www" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = "www.noakirelapp.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web_lb.dns_name
+    zone_id                = aws_lb.web_lb.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# Root domain record
+resource "aws_route53_record" "root" {
+  zone_id = aws_route53_zone.primary.zone_id
+  name    = "noakirelapp.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web_lb.dns_name
+    zone_id                = aws_lb.web_lb.zone_id
+    evaluate_target_health = true
   }
 }
