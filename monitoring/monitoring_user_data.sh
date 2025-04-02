@@ -1,31 +1,51 @@
-#!/bin/bash
+version: '3.8'
 
-exec > /var/log/user-data.log 2>&1  # שמירת לוגים
+services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./recording-rules.yml:/etc/prometheus/recording-rules.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-set -e  # עצירה על כל שגיאה
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/node-monitorinf.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+      - ./dashboards:/var/lib/grafana/dashboards
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-# Update and install required packages
-apt update && apt install -y docker.io docker-compose git
+networks:
+  monitoring:
+    driver: bridge
 
-# Enable and start Docker
-systemctl enable docker
-systemctl start docker
-
-# Setup monitoring directory
-mkdir -p /opt/monitoring
-cd /opt/monitoring
-
-# Clone repo
-git clone https://github.com/meitavEini/Status_page_FORKED_REPO.git
-
-# Navigate to monitoring folder
-cd Status_page_FORKED_REPO/monitoring
-
-# Optional: validate docker-compose exists
-if [ ! -f docker-compose.yml ]; then
-  echo "❌ docker-compose.yml not found!" >&2
-  exit 1
-fi
-
-# Start services
-docker-compose up -d
+volumes:
+  grafana_data:
