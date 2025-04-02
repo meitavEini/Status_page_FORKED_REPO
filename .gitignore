@@ -21,4 +21,5 @@ __pycache__
 terraform.tfstate
 terraform.tfstate.backup
 .terraform/
+.env
 
