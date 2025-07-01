@@ -49,7 +49,7 @@ systemctl enable --now docker
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 rm -rf /opt/monitoring
-git clone --branch monitoring https://github.com/YOUR_USERNAME/Status_page_FORKED_REPO.git /opt/monitoring
+git clone --branch monitoring https://github.com/meitavEini/Status_page_FORKED_REPO.git /opt/monitoring
 cd /opt/monitoring
 docker-compose up -d
 ```
@@ -69,6 +69,12 @@ monitoring/
 ## 📸 Sneak Peek
 ![Status Page Screenshot](./monitoring/Screenshot.png)
 ![Status Page Screenshot](./monitoring/grafana.jpg)
+
+---
+
+## 🖥️ My Presentation - On GAMMA site 🖥️
+
+https://status-page--izd68t7.gamma.site/
 
 ---
 
